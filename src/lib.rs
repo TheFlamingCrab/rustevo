@@ -1,4 +1,5 @@
 use std::iter;
+use std::cell::Cell;
 use std::vec::Vec;
 
 use wgpu::util::DeviceExt;
@@ -71,7 +72,7 @@ impl Camera {
         let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
 
         // 3.
-        return OPENGL_TO_WGPU_MATRIX * proj * view;
+        OPENGL_TO_WGPU_MATRIX * proj * view
     }
 }
 
@@ -132,14 +133,12 @@ impl CameraUniform {
 
 struct InputState {
     keys_pressed: [bool; 128],
-    keys_down: [bool; 128],
 }
 
 impl InputState {
     fn new() -> Self {
         Self {
             keys_pressed: [false; 128],
-            keys_down: [false; 128],
         }
     }
 
@@ -147,21 +146,13 @@ impl InputState {
         self.keys_pressed[keycode] = state;
     }
 
-    fn set_key_down(&mut self, keycode: usize) {
-        self.keys_down[keycode] = true;
-    }
-
-    fn flush_key_down(&mut self) {
-        self.keys_down.iter_mut().for_each(|m| *m = false);
-    }
-
     fn get_key_held(&self, keycode: usize) -> bool {
         self.keys_pressed[keycode]
     }
+}
 
-    fn get_key_down(&self, keycode: usize) -> bool {
-        self.keys_down[keycode]
-    }
+pub trait InputHandler {
+    fn handle_input(state: ElementState, keycode: u32);
 }
 
 struct State {
@@ -476,7 +467,8 @@ impl State {
                 match input.state {
                     ElementState::Pressed => {
                         self.input.set_key_held(input.scancode as usize, true);
-                        self.input.set_key_down(input.scancode as usize);
+                        
+                        // CALL ALL INPUT HANDLERS
                     }
                     ElementState::Released => {
                         self.input.set_key_held(input.scancode as usize, false);
@@ -567,12 +559,17 @@ impl State {
     }
 }
 
+thread_local!(static DELTA_TIME: Cell<u32> = Cell::new(1));
+
 pub async fn run() {
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
     // State::new uses async code, so we're going to wait for it to finish
     let mut state = State::new(window).await;
+
+    let mut now = std::time::Instant::now();
+    let mut delta_time: f64 = 0.0;
 
     event_loop.run(move |event, _, control_flow| {
         match event {
@@ -604,7 +601,6 @@ pub async fn run() {
                 }
             }
             Event::RedrawRequested(window_id) if window_id == state.window().id() => {
-                state.input.flush_key_down();
 
                 state.update();
                 match state.render() {
@@ -616,6 +612,10 @@ pub async fn run() {
                     // We're ignoring timeouts
                     Err(wgpu::SurfaceError::Timeout) => log::warn!("Surface timeout"),
                 }
+
+                delta_time = (now.elapsed().as_millis() as f64) / 1000.0;
+                println!("{}", delta_time);
+                now = std::time::Instant::now();
             }
             Event::MainEventsCleared => {
                 // RedrawRequested will only trigger once, unless we manually
