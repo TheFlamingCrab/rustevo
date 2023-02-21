@@ -12,6 +12,7 @@ struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) tex_coords: vec2<f32>,
     @location(2) rotation: f32,
+    @location(3) pivot: vec2<f32>,
 };
 
 struct VertexOutput {
@@ -19,14 +20,14 @@ struct VertexOutput {
     @location(0) tex_coords: vec2<f32>,
 };
 
-fn rotate(uv: vec2<f32>, rotation: f32) -> vec2<f32> {
+fn rotate(uv: vec2<f32>, pivot: vec2<f32>, rotation: f32) -> vec2<f32> {
     let cosa: f32 = cos(rotation);
     let sina: f32 = sin(rotation);
 
     return vec2(
-      cosa * uv.x - sina * uv.y,
-      cosa * uv.y + sina * uv.x,
-    );
+      cosa * (uv.x - pivot.x) - sina * (uv.y - pivot.y),
+      cosa * (uv.y - pivot.y) + sina * (uv.x - pivot.x),
+    ) + pivot;
 }
 
 @vertex
@@ -35,8 +36,8 @@ fn vs_main(
 ) -> VertexOutput {
     var out: VertexOutput;
     out.tex_coords = model.tex_coords;
-    let rotate_coords: vec2<f32> = vec2(model.position.x, model.position.y);
-    out.clip_position = vec4<f32>(rotate(rotate_coords, model.rotation), model.position.z, 1.0);
+    var rotate_coords: vec2<f32> = vec2(model.position.x, model.position.y);
+    out.clip_position = vec4<f32>(rotate(rotate_coords, model.pivot, model.rotation), model.position.z, 1.0);
     return out;
 }
 
